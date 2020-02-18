@@ -293,3 +293,24 @@ genesetAnalysis = function(GSC, dataset, p = 0.05, test = "t.test", center = FAL
   return(returnList)
 }
 
+boxplotFCs = function(fitCofComp, gene) {
+    boxplot(fitCofComp[grep(gene,row.names(fitCofComp)),] ~ factor(sub("_[1-9]$","",colnames(all_ab_fc))), las = 2, cex.lab = 0.8, cex.axis = 0.6, xlab = "", ylab = "Fitness coefficient", range = 0, main = grep(gene,row.names(fitCofComp), value = TRUE))
+}
+
+plotFCs = function(fitCofList, colorList = NULL, conditionA = "Fitness coefficient", conditionB = "Fitness coefficient", lim = c(-11,11)) {
+    fc_ctrl = fitCofList[[1]]
+    if (is.null(colorList)) {
+        colorList = 1:length(fitCofList)
+    }
+    plot(fc_ctrl[,1], fc_ctrl[,1], type = "n", ylim = lim, xlim = lim, xlab = conditionA, ylab = conditionB)
+    for (i in 2:length(fitCofList)) {
+        points(fc_ctrl[,1], fitCofList[[i]][,1], col = colorList[i-1], cex = 0.2)
+    }
+    for (i in 2:length(fitCofList)) {
+        points(fc_ctrl[fitCofList[[i]][,3] < 0.05,1], fitCofList[[i]][fitCofList[[i]][,3] < 0.05,1], col = colorList[i-1], cex = 0.4)        
+    }
+    for (i in 2:length(fitCofList)) {
+        xlm = lm(fitCofList[[i]][,1] ~ fc_ctrl[,1])
+        abline(xlm, lty = 2, col = colorList[i-1])
+    }
+}
