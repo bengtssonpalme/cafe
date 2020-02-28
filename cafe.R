@@ -294,20 +294,40 @@ genesetAnalysis = function(GSC, dataset, p = 0.05, test = "t.test", center = FAL
 }
 
 boxplotFCs = function(fitCofComp, gene) {
-    boxplot(fitCofComp[grep(gene,row.names(fitCofComp)),] ~ factor(sub("_[1-9]$","",colnames(all_ab_fc))), las = 2, cex.lab = 0.8, cex.axis = 0.6, xlab = "", ylab = "Fitness coefficient", range = 0, main = grep(gene,row.names(fitCofComp), value = TRUE))
+    boxplot(fitCofComp[grep(gene,row.names(fitCofComp)),] ~ factor(sub("_[1-9]$","",colnames(fitCofComp))), las = 2, cex.lab = 0.8, cex.axis = 0.6, xlab = "", ylab = "Fitness coefficient", range = 0, main = grep(gene,row.names(fitCofComp), value = TRUE))
 }
 
 plotFCs = function(fitCofList, colorList = NULL, conditionA = "Fitness coefficient", conditionB = "Fitness coefficient", lim = c(-11,11)) {
     fc_ctrl = fitCofList[[1]]
+    if (max(fc_ctrl[,3]) > 1 || min (fc_ctrl[,3]) < 0) {
+        runRanks = TRUE
+    } else {
+        runRanks = FALSE
+    }
     if (is.null(colorList)) {
         colorList = 1:length(fitCofList)
     }
+
+    if (runRanks) {
+        fc_ctrl = rankByP(fitCofList[[1]],toplist = FALSE)
+    }
+    
     plot(fc_ctrl[,1], fc_ctrl[,1], type = "n", ylim = lim, xlim = lim, xlab = conditionA, ylab = conditionB)
     for (i in 2:length(fitCofList)) {
-        points(fc_ctrl[,1], fitCofList[[i]][,1], col = colorList[i-1], cex = 0.2)
+        if (runRanks) {
+            fc_test = rankByP(fitCofList[[i]],toplist = FALSE)
+        } else {
+            fc_test = fitCofList[[i]]
+        }
+        points(fc_ctrl[,1], fc_test[,1], col = colorList[i-1], cex = 0.2)
     }
     for (i in 2:length(fitCofList)) {
-        points(fc_ctrl[fitCofList[[i]][,3] < 0.05,1], fitCofList[[i]][fitCofList[[i]][,3] < 0.05,1], col = colorList[i-1], cex = 0.4)        
+        if (runRanks) {
+            fc_test = rankByP(fitCofList[[i]],toplist = FALSE)
+        } else {
+            fc_test = fitCofList[[i]]
+        }
+        points(fc_ctrl[fc_test[,3] < 0.05,1], fc_test[fc_test[,3] < 0.05,1], col = colorList[i-1], cex = 0.4)
     }
     for (i in 2:length(fitCofList)) {
         xlm = lm(fitCofList[[i]][,1] ~ fc_ctrl[,1])
