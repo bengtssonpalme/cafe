@@ -293,8 +293,35 @@ genesetAnalysis = function(GSC, dataset, p = 0.05, test = "t.test", center = FAL
   return(returnList)
 }
 
-boxplotFCs = function(fitCofComp, gene) {
-    boxplot(fitCofComp[grep(gene,row.names(fitCofComp)),] ~ factor(sub("_[1-9]$","",colnames(fitCofComp))), las = 2, cex.lab = 0.8, cex.axis = 0.6, xlab = "", ylab = "Fitness coefficient", range = 0, main = grep(gene,row.names(fitCofComp), value = TRUE))
+boxplotFCs = function(fitCofComp, gene, colors = NULL, ylim = NULL, las = 2) {
+    if (is.null(colors)) {
+        colors = (2:(length(gene)+1))
+    }
+    if (length(gene) == 1) {
+        boxplot(fitCofComp[grep(gene,row.names(fitCofComp)),] ~ factor(sub("_[1-9]$","",colnames(fitCofComp)), levels = unique(sub("_[1-9]$","",colnames(fitCofComp)))), las = las, cex.lab = 0.8, cex.axis = 0.6, xlab = "", ylab = "Fitness coefficient", range = 0, main = grep(gene,row.names(fitCofComp), value = TRUE), ylim = ylim)
+    } else {
+        treatmentNames = unique(sub("_[1-9]$","",colnames(fitCofComp)))
+        treatmentN = length(treatmentNames)
+        values = fitCofComp[grep(gene[1],row.names(fitCofComp)),]
+        nsamp = length(colnames(fitCofComp))
+        stratifyBy = sub("_[1-9]$","",colnames(fitCofComp))
+        geneNames = rep(gene[1],nsamp)
+        for (g in 2:length(gene)) {
+            values = c(values,fitCofComp[grep(gene[g],row.names(fitCofComp)),])
+            stratifyBy = c(stratifyBy,sub("_[1-9]$","",colnames(fitCofComp)))
+            geneNames = c(geneNames,rep(gene[g],nsamp))
+        }
+        data = data.frame(geneNames, stratifyBy, values)
+        stratifyByF = factor(stratifyBy)
+        stratifyByF = factor(stratifyByF,levels = treatmentNames)
+        geneNamesF = factor(geneNames)
+        myplot = boxplot(values ~ geneNamesF * stratifyByF, data = data, las = 2, cex.lab = 0.8, cex.axis = 0.6, boxwex = 0.5, xlab = "", ylab = "Fitness coefficient", range = 0, main = "",col=colors, ylim = ylim, xaxt="n")
+        axis(1, at = seq(length(gene)/2+0.5 , (length(gene)*treatmentN+1) , length(gene)), labels = treatmentNames ,  tick=FALSE , cex.axis=0.5, las = las)
+        for (i in seq(0.5 , (length(gene)*treatmentN+1) , length(gene))) { 
+            abline(v=i,lty=2, col="grey")
+        }
+        legend("bottomleft", legend = levels(geneNamesF), col=colors, pch = 15, bg = "white", pt.cex = 0.4, cex = 0.5,  horiz = T, inset = c(0, 0))
+    }
 }
 
 plotFCs = function(fitCofList, colorList = NULL, conditionA = "Fitness coefficient", conditionB = "Fitness coefficient", lim = c(-11,11)) {
