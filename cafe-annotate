@@ -1,0 +1,247 @@
+#!/usr/bin/perl
+## CAFE-ANNOTATE
+
+
+$app_title     = "CAFE-ANNOTATE - Coefficient-based Analysis of Fitness by read Enrichment\nAnnotation tool";
+$app_author    = "Johan Bengtsson-Palme, University of Gothenburg";
+$app_version   = "1.0";
+$app_message   = "";
+# ----------------------------------------------------------------- #
+
+# License information
+$license =
+  "  CAFE-ANNOTATE - Coefficient-based Analysis of Fitness by read Enrichment - Annotation tool
+    Copyright (C) 2019-2020 Johan Bengtsson-Palme
+
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted provided that the following conditions are met:
+       * Redistributions of source code must retain the above copyright
+         notice, this list of conditions and the following disclaimer.
+       * Redistributions in binary form must reproduce the above copyright
+         notice, this list of conditions and the following disclaimer in the
+         documentation and/or other materials provided with the distribution.
+       * Neither the name of University of Gothenburg, nor the
+         names of its contributors may be used to endorse or promote products
+         derived from this software without specific prior written permission.
+
+   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 'AS IS' AND
+   ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+   WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+   DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY
+   DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+   (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+   LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+   ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+";
+
+## BUGS:
+$bugs = "Added feature:\
+- None (intital release)\
+
+Known bugs in this version ($app_version):\
+- None\
+";
+
+## Print title message
+print STDERR "$app_title\nby $app_author\nVersion: $app_version\n$app_message";
+print STDERR "-----------------------------------------------------------------\n";
+
+for ($i = 0; $i <= scalar(@ARGV); $i++) { # Goes through the list of arguments
+  $arg = @ARGV[$i];		# Stores the current argument in $arg
+## OPTIONS:
+  ## If "-h" is among the options, output short usage data and options
+  if ($arg eq "-h") {
+    print "Usage: cafe-annotate <genome annotation file (tab format)> <any number of SAM files from cafe-map>\n";
+    print "-----------------------------------------------------------------\n";
+    exit;			# Exit
+  }
+
+  ## If "--help" is among the options, output usage data and all options
+  if ($arg eq "--help") {
+    print "Usage: cafe-annotate <genome annotation file (tab format)> <any number of SAM files from cafe-map>\n";
+    print "-----------------------------------------------------------------\n";
+    exit;			# Exit
+  }
+
+  ## If "--bugs" is among the options, output bugs and features information
+  if ($arg eq "--bugs") {
+    print "$bugs\n";
+    exit;			# Exit
+  }
+
+  ## If "--license" is among the options, output license information
+  if ($arg eq "--license") {
+    print "$license\n";
+    exit;			# Exit
+  }
+
+}
+
+
+
+$annotation = @ARGV[0];
+
+if ($annotation eq "") {
+  print STDERR "FATAL ERROR! No annotation file provided!\n";
+  print STDERR "Usage: cafe-annotate <genome annotation file (tab format)> <any number of SAM files from cafe-map>\n";
+  exit;
+}
+
+if (@ARGV[1] eq "") {
+  print STDERR "FATAL ERROR! No SAM files provided!\n";
+  print STDERR "Usage: cafe-annotate <genome annotation file (tab format)> <any number of SAM files from cafe-map>\n";
+  exit;
+}
+
+$time = localtime;
+print STDERR $time . " : Reading annotations file...\n";
+open (ANNOT, $annotation);
+while ($line = <ANNOT>) {
+  #Sequence        Locus Tag       Feature Type    Start   End     Strand  Name    Product Name    Synonyms        Accession       GI      Length (nucleotides)    Isoelectric Point (predicted)   Molecular Weight (predicted)    Mean Kyte-Doolittle Hydropathicity (GRAVY score)        Charge at pH 7 (predicted)      Length (amino acids)    Nucleotide Sequence     Amino Acid Sequence
+  chomp($line);
+  ($organism, $locustag, $featureType, $start, $end, $strand, $geneName, $productName, $synonyms, $accession, $gi, $lenNT, $isoelp, $molw, $gravy, $charge, $lenAA, $ntseq, $aaseq) = split('\t', $line);
+  $allInfo{$locustag} = $line;
+  $geneNames{$locustag} = $geneName;
+  $geneCounts{"$locustag:$geneName"} = 0;
+  $starts{$locustag} = $start;
+  $ends{$locustag} = $end;
+  $modStart = substr($start, 0, length($start) - 2);
+  $modEnd = substr($end, 0, length($end) - 2);
+  for ($p = $modStart; $p <= $modEnd; $p++) {
+    if (defined($pos{$p})) {
+      $pos{$p} = $pos{$p} . "+" . $locustag;
+    } else {
+      $pos{$p} = $locustag;
+    }
+  }
+
+}
+close ANNOT;
+
+@sampnames = ();
+undef %locustags;
+
+for ($a = 1; $a < scalar(@ARGV); $a++) {
+undef %geneCounts;
+$inseq_out = @ARGV[$a];
+$sample_name = $inseq_out;
+$sample_name =~ s/.sam$//;
+$time = localtime;
+print STDERR $time . " : Parsing $sample_name...\n";
+
+push(@sampnames, $sample_name);
+open (IN, $inseq_out);
+while ($line = <IN>) {
+  chomp($line);
+  if (substr($line, 0, 1) eq "@") {
+    next;
+  }
+  (@items) = split('\t', $line);
+  $mutpos = @items[3];
+  if ($mutpos == 0) {
+    $locustag = "unmapped";    
+    if (defined($geneCounts{"unmapped"})) {
+      $geneCounts{"unmapped"} = $geneCounts{"unmapped"} + 1;
+    } else {
+      $geneCounts{"unmapped"} = 1;
+    }
+    if (defined($ALLgeneCounts{"$sample_name\tunmapped"})) {
+      $ALLgeneCounts{"$sample_name\tunmapped"} = $ALLgeneCounts{"$sample_name\tunmapped"} + 1;
+    } else {
+      $ALLgeneCounts{"$sample_name\tunmapped"} = 1;
+    }
+  } else {
+    $modPos = substr($mutpos, 0, length($mutpos) - 2);
+    if (defined($pos{$modPos})) {
+      $locustagL = $pos{$modPos};
+    } else {
+      $locustag = "undef";
+    }
+    (@locusList) = split('\+', $locustagL);
+    $hasbeendefined = 0;
+    foreach $locustag (@locusList) {
+      $locustags{$locustag} = 1;
+      if (($starts{$locustag} < $mutpos) && ($ends{$locustag} > $mutpos)) {
+	$hasbeendefined = 1;
+	$gene = $geneNames{$locustag};
+	$info = $allInfo{$locustag};
+	if (defined($geneCounts{"$locustag:$gene"})) {
+	  $geneCounts{"$locustag:$gene"} = $geneCounts{"$locustag:$gene"} + 1;
+	} else {
+	  $geneCounts{"$locustag:$gene"} = 1;
+	}
+	if (defined($ALLgeneCounts{"$sample_name\t$locustag:$gene"})) {
+	  $ALLgeneCounts{"$sample_name\t$locustag:$gene"} = $ALLgeneCounts{"$sample_name\t$locustag:$gene"} + 1;
+	} else {
+	  $ALLgeneCounts{"$sample_name\t$locustag:$gene"} = 1;
+	}
+      }
+    }
+    if ($hasbeendefined == 0) {
+      if (defined($geneCounts{"undef"})) {
+	$geneCounts{"undef"} = $geneCounts{"undef"} + 1;
+      } else {
+	$geneCounts{"undef"} = 1;
+      }
+      if (defined($ALLgeneCounts{"$sample_name\tundef"})) {
+	$ALLgeneCounts{"$sample_name\tundef"} = $ALLgeneCounts{"$sample_name\tundef"} + 1;
+      } else {
+	$ALLgeneCounts{"$sample_name\tundef"} = 1;
+      }
+    }
+  }
+}
+close IN;
+
+open (OUT, ">$inseq_out.annot.txt");
+foreach $gene (sort(keys(%geneCounts))) {
+  print OUT $gene . "\t" . $geneCounts{$gene} . "\n";
+}
+close OUT;
+}
+
+$time = localtime;
+print STDERR $time . " : Writing output...\n";
+open (OUT, ">cafe_combined_out.annot.txt");
+print OUT "Gene/Locus" . "\t";
+foreach $sample (@sampnames) {
+  print OUT $sample . "\t";
+}
+print OUT "\n";
+foreach $locustag (sort(keys(%locustags))) {
+  $gene = $geneNames{$locustag};
+  print OUT $locustag . ":" . $gene . "\t";
+  foreach $sample (@sampnames) {
+    if (defined($ALLgeneCounts{"$sample\t$locustag:$gene"})) {
+      print OUT $ALLgeneCounts{"$sample\t$locustag:$gene"} . "\t";
+    } else {
+      print OUT "0\t";
+    }
+  }
+  print OUT "\n";
+}
+
+print OUT "undef" . "\t";
+foreach $sample (@sampnames) {
+  if (defined($ALLgeneCounts{"$sample\tundef"})) {
+    print OUT $ALLgeneCounts{"$sample\tundef"} . "\t";
+  } else {
+    print OUT "0\t";
+  }
+}
+print OUT "\n";
+
+print OUT "unmapped" . "\t";
+foreach $sample (@sampnames) {
+  if (defined($ALLgeneCounts{"$sample\tunmapped"})) {
+    print OUT $ALLgeneCounts{"$sample\tunmapped"} . "\t";
+  } else {
+    print OUT "0\t";
+  }
+}
+print OUT "\n";
+
+$time = localtime;
+print STDERR $time . " : Done! Combined output is in 'cafe_combined_out.annot.txt'.\n";

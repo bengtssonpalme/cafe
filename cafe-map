@@ -1,0 +1,337 @@
+#!/usr/bin/perl
+## CAFE-MAP
+
+
+$app_title     = "CAFE-MAP - Coefficient-based Analysis of Fitness by read Enrichment\nMapping tool";
+$app_author    = "Johan Bengtsson-Palme, University of Gothenburg";
+$app_version   = "1.0";
+$app_message   = "";
+# ----------------------------------------------------------------- #
+
+# License information
+$license =
+  "  CAFE-MAP - Coefficient-based Analysis of Fitness by read Enrichment - Mapping tool
+    Copyright (C) 2019-2020 Johan Bengtsson-Palme
+
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted provided that the following conditions are met:
+       * Redistributions of source code must retain the above copyright
+         notice, this list of conditions and the following disclaimer.
+       * Redistributions in binary form must reproduce the above copyright
+         notice, this list of conditions and the following disclaimer in the
+         documentation and/or other materials provided with the distribution.
+       * Neither the name of University of Gothenburg, nor the
+         names of its contributors may be used to endorse or promote products
+         derived from this software without specific prior written permission.
+
+   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 'AS IS' AND
+   ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+   WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+   DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY
+   DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+   (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+   LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+   ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+";
+
+## BUGS:
+$bugs = "Added feature:\
+- None (intital release)\
+
+Known bugs in this version ($app_version):\
+- None\
+";
+
+## OPTIONS:
+
+$usage = "\
+-i <input file> : the path to the input file (FASTQ-format)\
+-o <output directory> : the base name of the output directory\
+-b <barcode file> : file containing the barcode and sample name mappings (text format)\
+-r <reference genome> : reference genome in Bowtie2 format\
+--cpu <integer> : number of CPUs to use for mapping step, default = 1\
+-a <adapter> : the adapter that should be trimmed from the reads,\
+               default = 'ACAGGTTGGATGATAAGTCCCCGGTCTTCGTATGCCGTCTTCTGCTTG'\
+
+-W : if specified, unassigned reads will be written to a separate FASTQ file\
+-T : if specified, quality trimming of reads will not be performed\
+-S : if specified, sorting of reads by barcode will not be performed\
+-M : if specified, mapping of reads to the reference genome will not be performed\
+
+-h : displays short usage information\
+--help : displays this help message\
+--bugs : displays the bug fixes and known bugs in this version\
+--license : displays licensing information\
+";
+
+
+## Print title message
+print STDERR "$app_title\nby $app_author\nVersion: $app_version\n$app_message";
+print STDERR "-----------------------------------------------------------------\n";
+
+
+$barcodeFile = "";
+$inputFile = "";
+$refGenome = "";
+$outDir = "output";
+$run_trimming = 1;
+$run_sorting = 1;
+$run_mapping = 1;
+$writeUnassigned = 0;
+$adapter = "ACAGGTTGGATGATAAGTCCCCGGTCTTCGTATGCCGTCTTCTGCTTG";
+$cpu = 1;
+
+
+for ($i = 0; $i <= scalar(@ARGV); $i++) { # Goes through the list of arguments
+  $arg = @ARGV[$i];		# Stores the current argument in $arg
+
+  if ($arg eq "-i") {		# Read input file from -i flag
+    $i++;
+    $inputFile = @ARGV[$i];
+  }
+  if ($arg eq "-o") {		# Read output file
+    $i++;
+    $outDir = @ARGV[$i];
+  }
+  if ($arg eq "-b") {       	# Read barcode file from -b flag
+    $i++;
+    $barcodeFile = @ARGV[$i];
+  }
+  if ($arg eq "-r") {       	# Read reference genome from -r flag
+    $i++;
+    $refGenome = @ARGV[$i];
+  }
+  if ($arg eq "-a") {       	# Read adapter from -a flag
+    $i++;
+    $adapter = @ARGV[$i];
+  }
+
+  if ($arg eq "-W") {		# Read write unassigned flag
+    $writeUnassigned = 1;
+  }
+
+  if ($arg eq "-T") {		# Read trimming flag
+    $run_trimming = 0;
+  }
+
+  if ($arg eq "-S") {		# Read sorting flag
+    $run_sorting = 0;
+  }
+
+  if ($arg eq "-M") {		# Read mapping flag
+    $run_mapping = 0;
+  }
+
+  if ($arg eq "--cpu") {       	# Read CPU number
+    $i++;
+    $cpu = @ARGV[$i];
+  }
+
+
+
+  ## If "-h" is among the options, output short usage data and options
+  if ($arg eq "-h") {
+    print "Usage: cafe-map -i <input file> -o <output files base> -r <reference genome> -b <barcode file>\nOptions:$usage";
+    print "-----------------------------------------------------------------\n";
+    exit;			# Exit
+  }
+
+  ## If "--help" is among the options, output usage data and all options
+  if ($arg eq "--help") {
+    print "Usage: cafe-map -i <input file> -o <output files base> -r <reference genome> -b <barcode file>\nOptions:$usage";
+    print "-----------------------------------------------------------------\n";
+    exit;			# Exit
+  }
+
+  ## If "--bugs" is among the options, output bugs and features information
+  if ($arg eq "--bugs") {
+    print "$bugs\n";
+    exit;			# Exit
+  }
+
+  ## If "--license" is among the options, output license information
+  if ($arg eq "--license") {
+    print "$license\n";
+    exit;			# Exit
+  }
+
+}
+
+
+if ($inputFile eq "") {
+  print STDERR "FATAL ERROR! No input file provided!\n";
+  exit;
+}
+
+if ($barcodeFile eq "") {
+  print STDERR "FATAL ERROR! No barcode file provided!\n";
+  exit;
+}
+
+if ($refGenome eq "") {
+  print STDERR "FATAL ERROR! No reference genome provided!\n";
+  exit;
+}
+
+if ($outDir eq "") {
+  print STDERR "FATAL ERROR! No output name! Use the -o option to select a directory for the output files!\n";
+  exit;
+}
+
+
+$maxlen = 1;
+$minlen = 50;
+open (BC, $barcodeFile);
+while ($line = <BC>) {
+  chomp($line);
+  ($name, $barcode, $sample) = split('\t', $line);
+  if (defined($sampleNames{$barcode})) {
+    print STDERR "Error! Barcode $barcode given twice! $name cannot be added.\n";
+    exit;
+  } else {
+    if ($barcode ne "") {
+      if (length($barcode) > $maxlen) {
+	$maxlen = length($barcode);
+      }
+      if (length($barcode) < $minlen) {
+	$minlen = length($barcode);
+      }
+      if ($sample eq "") {
+	$sampleNames{$barcode} = $name;
+      } else {
+	$sampleNames{$barcode} = $sample;
+      }
+      push(@sampleNameList, $sampleNames{$barcode});
+      $ambbarcode = "N" . substr($barcode, 1);
+      if (defined($sampleNames{$ambbarcode})) {
+	## Don't add ambigious barcode
+	$sampleNames{$ambbarcode} = "Unassigned";
+      } else {
+	if ($sample eq "") {
+	  $sampleNames{$ambbarcode} = $name;
+	} else {
+	  $sampleNames{$ambbarcode} = $sample;
+	}
+      }
+    }
+  }
+}
+close BC;
+
+if ($outDir ne "") {
+  `mkdir $outDir`;
+}
+
+if ($run_trimming == 1) {
+  $time = localtime;
+  print STDERR $time . " : Started trimming using TrimGalore!...\n";
+  
+  if ($outDir ne "") {
+    `mkdir $outDir/trim_galore`;
+  }
+  
+  ## TRIMMING AND ADAPTER REMOVAL
+  `trim_galore -q 30 -a $adapter --stringency 4 -e 0.1 --gzip --length 15 -o $outDir/trim_galore $inputFile`;
+  
+  $fastqFile = $inputFile;
+  $fastqFile =~ s/.fastq.gz//;
+  $fastqFile =~ s/.fq.gz//;
+  $fastqFile =~ s/.fastq//;
+  $fastqFile =~ s/.fq//;
+  $fastqFile = $fastqFile . "_trimmed.fq";
+  
+  $time = localtime;
+  print STDERR $time . " : Done. Unzipping files...\n";
+  
+  `gunzip $outDir/trim_galore/$fastqFile.gz`;
+} else {
+  $fastqFile = $inputFile;
+  $fastqFile =~ s/.fastq.gz//;
+  $fastqFile =~ s/.fq.gz//;
+  $fastqFile =~ s/.fastq//;
+  $fastqFile =~ s/.fq//;
+  $fastqFile = $fastqFile . "_trimmed.fq";
+}
+
+if ($run_sorting == 1) {
+  ## SORTING BY BARCODE
+  
+  $time = localtime;
+  print STDERR $time . " : Started sorting...\n";
+  
+  $scount = 0;
+  $ln = 0;
+  open (FQ, "$outDir/trim_galore/$fastqFile");
+  while ($line = <FQ>) {
+    chomp($line);
+    $ln++;
+    if ($ln == 1) {
+      $header = $line;
+    }
+    if ($ln == 2) {
+      $seq = $line;
+    }
+    if ($ln == 3) {
+      $rep = $line;
+    }
+    if ($ln == 4) {
+      $qual = $line;
+    }
+    if ($ln >=4) {
+      $sampleName = "Unassigned";
+      $bcl = $minlen;
+      for ($xi = $minlen; $xi <= $maxlen; $xi++) {
+	$testbarcode = substr($seq, 0, $xi);
+	if (defined($sampleNames{$testbarcode})) {
+	  $sampleName = $sampleNames{$testbarcode};
+	  $bcl = $xi;
+	  last;
+	}
+      }
+      if ($sampleName eq "Unassigned") {
+	$bcl = $minlen;
+      }
+      if (($sampleName ne "Unassigned") || ($writeUnassigned == 1)) {
+	open (OUT, ">>$outDir/$sampleName.sorted.fastq");
+	print OUT $header . "\n";
+	print OUT substr($seq, $bcl) . "\n";
+	print OUT $rep . "\n";
+	print OUT substr($qual, $bcl) . "\n";
+	close OUT;
+      }
+      
+      $ln = 0;
+      $header = "";
+      $seq = "";
+      $rep = "";
+      $qual = "";
+      $scount++;
+      if (int($scount / 100000) == $scount / 100000) {
+	$time = localtime;
+	print STDERR $time . " : " . $scount . " sequences processed...\n";
+      }
+    }
+  }
+  close FQ;
+  
+  $time = localtime;
+  print STDERR $time . " : " . "Finished sorting. " . $scount . " sequences processed.\n";
+}
+
+if ($run_mapping == 1) {
+  $time = localtime;
+  print STDERR $time . " :  Started mapping to reference genome using Bowtie2...\n";
+  
+  foreach $sampleName (@sampleNameList) {
+    $time = localtime;
+    print STDERR $time . " :  Mapping $sampleName...\n";
+    
+    print STDERR "bowtie2 -p $cpu --local -D 20 -R 3 -N 0 -L 13 -i 'S,1,0.50' --score-min 'G,2,10' -x $refGenome -U $outDir/$sampleName.sorted.fastq -S $outDir/$sampleName.sam\n";
+    `bowtie2 -p $cpu --local -D 20 -R 3 -N 0 -L 13 -i 'S,1,0.50' --score-min 'G,2,10' -x $refGenome -U $outDir/$sampleName.sorted.fastq -S $outDir/$sampleName.sam`;
+  }
+  
+  $time = localtime;
+  print STDERR $time . " :  Finished mapping for all samples.\n";
+}
