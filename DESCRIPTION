@@ -1,0 +1,19 @@
+Package: CAFE
+Title: Coefficient-based Analysis of Fitness by read Enrichment
+Version: 1.0
+Authors@R: 
+    person(given = "Johan",
+           family = "Bengtsson-Palme",
+           role = c("aut", "cre"),
+           email = "johan.bengtsson-palmet@microbiology.se",
+           comment = c(ORCID = "0000-0002-6528-3158"))
+Description: CAFE is a software package that can analyze data from paired transposon mutant sequencing experiments (e.g. InSeq), generate fitness coefficients for each gene and condition, as well as perform appropriate statistical testing on these fitness coefficients.
+License: `use_mit_license()`
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.0
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
