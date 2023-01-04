@@ -13,8 +13,8 @@ loadData = function(inputFileName = "") {
     }
     countData <<- read.table(inputFileName, row.names = 1, header = T, quote = "", sep = "\t")
     countData <<- within(countData, rm("X"))
-    undefCounts <<- countData["undef",]
-    unmappedCounts <<- countData["unmapped",]
+    undefCounts <<- t(countData["undef",])
+    unmappedCounts <<- t(countData["unmapped",])
     countData <<- countData[1:(nrow(countData)-2),]
     countMatrix <<- as.matrix(countData)
     geneNames <<- row.names(countData)
